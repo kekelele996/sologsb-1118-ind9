@@ -57,13 +57,13 @@ sologsb-1118/
 │   ├── nginx.conf              # try_files 前端路由回落 + gzip
 │   ├── public/favicon.svg
 │   └── src/
-│       ├── types/              # trench.ts / stratum.ts / artifact.ts / relation.ts / index.ts
-│       ├── stores/             # trenchStore / stratumStore / artifactStore / relationStore（Zustand）
+│       ├── types/              # trench.ts / stratum.ts / artifact.ts / relation.ts / handover.ts / index.ts
+│       ├── stores/             # trenchStore / stratumStore / artifactStore / relationStore / handoverStore（Zustand）
 │       ├── components/common/  # StratumDepthBar / RelationGraph / TrenchTag / UnitPicker
 │       ├── hooks/              # useStratumOrder / useRelationGraph / usePersistentStore
-│       ├── pages/              # TrenchesPage / StrataPage / ArtifactsPage / RelationsPage / SectionsPage
+│       ├── pages/              # TrenchesPage / StrataPage / ArtifactsPage / RelationsPage / SectionsPage / HandoverPage
 │       ├── router/index.ts
-│       └── utils/              # graph.ts / export.ts / id.ts
+│       └── utils/              # graph.ts / export.ts / id.ts / review.ts
 ```
 
 ## 五、数据模型与存储
@@ -74,9 +74,11 @@ sologsb-1118/
 | Stratum 地层单位 | 单位号、类型（地层/灰坑/房址/沟/墓葬）、开口层位、上下界深度、土质土色、包含物、堆积成因、绘图拍照号 | `strata` |
 | Artifact 出土物 | 所属地层单位、器物编号、类别、件数、残整程度、探方内 X/Y/Z、出土日期、提取人、临时存放 | `artifacts` |
 | Relation 层位关系 | 单位 A、关系类型（叠压/打破/共存）、单位 B、判定依据、记录人、备注 | `relations` |
+| Handover 交接留档 | 可追溯编号、交接人、接手人、交接日期、留档时记录快照（单位/出土物/关系数）、备注、留档时间 | `handovers` |
 
 - 数据库名 `gbtrenchlog`，`meta` 表保存 `schemaVersion`；
 - `version(2)` 升级迁移会为历史地层单位补齐「开口层位」字段并规范包含物数组；
+- `version(3)` 新增 `handovers` 交接留档表，留档记录只增不删，保证同一探方多次交接均可追溯；
 - 数据仅存于浏览器本地，容器无状态、不挂载命名卷。
 
 ## 六、主要页面
@@ -88,6 +90,7 @@ sologsb-1118/
 | `/artifacts` | 出土物登记与清单：先锁定所属地层单位（级联选择器），带出深度区间并校验出土深度是否在该区间内 |
 | `/relations` | 层位关系视图：SVG 有向图展示叠压/打破，点击节点高亮直接关系，新增关系前做环路检测 |
 | `/sections` | 四壁剖面示意：按深度刻度绘制地层条带与厚度标注，叠加出土物投影点 |
+| `/handover` | 交接复核：选定探方汇总编目记录，复核四类异常并定位到具体记录；通过后填写交接人/接手人/日期生成可追溯编号留档，历史交接可回查 |
 
 ## 七、校验规则
 
@@ -97,3 +100,10 @@ sologsb-1118/
 - 若「A 叠压/打破 B」但 A 的上界深度大于 B，则提示层位关系与深度矛盾；
 - 新增层位关系前做**环路检测**（DFS），会形成闭合矛盾的关系直接拒绝保存；
 - 出土物的 Z（深度）必须落在其所属地层单位的深度区间内，否则给出层位核对提示。
+
+## 八、交接复核
+
+- 选定探方后自动汇总其地层单位、出土物与层位关系，并复核四类异常：**层序倒置**、**关系与深度矛盾**、**出土深度越界**、**缺失引用**（层位关系引用了不存在的单位）；
+- 异常清单逐条指出具体记录（如「地层单位 H12」「出土物 T0501②:1」），明细表中对应行标红；存在异常时明细照常可查，但接手人不能确认交接；
+- 复核通过后填写交接人、接手人与交接日期，生成可追溯编号（`JJ-探方号-日期-序号`，如 `JJ-T0501-20260926-01`）并留档，同时记录当时的单位/出土物/关系数量快照；
+- 留档只增不删，同一探方再次交接时，历史交接记录仍可在页面底部回查。
